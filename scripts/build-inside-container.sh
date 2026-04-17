@@ -5,12 +5,6 @@ mkdir -p /work/src /work/build /work/tarballs /out
 cd /work/src
 
 wget -q -O .config "$MS_CONFIG_URL"
-if grep -q '^CT_LOG_PROGRESS_BAR=' .config; then
-  sed -i 's#^CT_LOG_PROGRESS_BAR=.*#CT_LOG_PROGRESS_BAR=n#' .config
-else
-  printf 'CT_LOG_PROGRESS_BAR=n\n' >> .config
-fi
-
 
 if grep -q '^CT_LOCAL_TARBALLS_DIR=' .config; then
   sed -i "s#^CT_LOCAL_TARBALLS_DIR=.*#CT_LOCAL_TARBALLS_DIR=\"${CT_TARBALLS_DIR}\"#" .config
@@ -24,11 +18,26 @@ else
   printf 'CT_SAVE_TARBALLS=y\n' >> .config
 fi
 
+if grep -q '^CT_LOG_PROGRESS_BAR=' .config; then
+  sed -i 's#^CT_LOG_PROGRESS_BAR=.*#CT_LOG_PROGRESS_BAR=n#' .config
+else
+  printf 'CT_LOG_PROGRESS_BAR=n\n' >> .config
+fi
+
+sed -i \
+  -e 's/^CT_LOG_ERROR=.*/# CT_LOG_ERROR is not set/' \
+  -e 's/^CT_LOG_WARN=.*/# CT_LOG_WARN is not set/' \
+  -e 's/^CT_LOG_INFO=.*/CT_LOG_INFO=y/' \
+  -e 's/^CT_LOG_EXTRA=.*/# CT_LOG_EXTRA is not set/' \
+  -e 's/^CT_LOG_ALL=.*/# CT_LOG_ALL is not set/' \
+  -e 's/^CT_LOG_DEBUG=.*/# CT_LOG_DEBUG is not set/' \
+  .config
+
 ct-ng build
 
-TARGET=$(sed -n 's/^CT_TARGET="\([^"]*\)"/\1/p' .config | head -n1)
+TARGET="$(ct-ng show-tuple | tail -n1 | tr -d '\r')"
 if [ -z "$TARGET" ]; then
-  echo "Could not determine CT_TARGET from .config" >&2
+  echo "Could not determine target tuple from ct-ng show-tuple" >&2
   exit 1
 fi
 
