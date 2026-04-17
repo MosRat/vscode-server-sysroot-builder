@@ -189,7 +189,7 @@ download_with_wget() {
 
 download_once() {
   local url="$1" out="$2"
-
+  echo "download_once $url to $out"
   if [ "$DOWNLOADER" = "curl" ]; then
     download_with_curl "$url" "$out"
   else
