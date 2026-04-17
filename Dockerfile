@@ -17,12 +17,19 @@ RUN wget -q "http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-${CTNG_V
     make install && \
     rm -rf /crosstool-ng-* "/crosstool-ng-${CTNG_VERSION}.tar.bz2"
 
+RUN useradd -m -u 1000 -s /bin/bash builder && \
+    mkdir -p /work/src /work/build /work/tarballs /out && \
+    chown -R builder:builder /work /out
+
 ENV PATH=/opt/ctng/bin:${PATH}
 ENV CT_PREFIX=/work/build
+ENV CT_TARBALLS_DIR=/work/tarballs
 ENV MS_CONFIG_URL=${MS_CONFIG_URL}
+
 WORKDIR /work
 
-COPY scripts/build-inside-container.sh /usr/local/bin/build-inside-container.sh
+COPY --chown=builder:builder scripts/build-inside-container.sh /usr/local/bin/build-inside-container.sh
 RUN chmod +x /usr/local/bin/build-inside-container.sh
 
+USER builder
 ENTRYPOINT ["/usr/local/bin/build-inside-container.sh"]
