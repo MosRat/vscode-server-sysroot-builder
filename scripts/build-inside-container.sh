@@ -5,6 +5,12 @@ mkdir -p /work/src /work/build /work/tarballs /out
 cd /work/src
 
 wget -q -O .config "$MS_CONFIG_URL"
+if grep -q '^CT_LOG_PROGRESS_BAR=' .config; then
+  sed -i 's#^CT_LOG_PROGRESS_BAR=.*#CT_LOG_PROGRESS_BAR=n#' .config
+else
+  printf 'CT_LOG_PROGRESS_BAR=n\n' >> .config
+fi
+
 
 if grep -q '^CT_LOCAL_TARBALLS_DIR=' .config; then
   sed -i "s#^CT_LOCAL_TARBALLS_DIR=.*#CT_LOCAL_TARBALLS_DIR=\"${CT_TARBALLS_DIR}\"#" .config
