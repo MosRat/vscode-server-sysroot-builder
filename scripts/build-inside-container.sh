@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p /work/src /work/build /work/tarballs /out
+mkdir -p /work/src /work/build /work/tarballs /work/x-tools /out
 cd /work/src
 
 wget -q -O .config "$MS_CONFIG_URL"
 
+if grep -q '^CT_PREFIX_DIR=' .config; then
+  sed -i 's#^CT_PREFIX_DIR=.*#CT_PREFIX_DIR="${CT_TOP_DIR}/x-tools/${CT_TARGET}"#' .config
+else
+  printf 'CT_PREFIX_DIR="${CT_TOP_DIR}/x-tools/${CT_TARGET}"\n' >> .config
+fi
+
 if grep -q '^CT_LOCAL_TARBALLS_DIR=' .config; then
   sed -i "s#^CT_LOCAL_TARBALLS_DIR=.*#CT_LOCAL_TARBALLS_DIR=\"${CT_TARBALLS_DIR}\"#" .config
 else
-  printf '\nCT_LOCAL_TARBALLS_DIR="%s"\n' "$CT_TARBALLS_DIR" >> .config
+  printf 'CT_LOCAL_TARBALLS_DIR="%s"\n' "$CT_TARBALLS_DIR" >> .config
 fi
 
 if grep -q '^CT_SAVE_TARBALLS=' .config; then
@@ -41,29 +47,16 @@ if [ -z "$TARGET" ]; then
   exit 1
 fi
 
-GCC=""
-for cand in \
-  "$CT_PREFIX/$TARGET/bin/${TARGET}-gcc" \
-  "$CT_PREFIX/bin/${TARGET}-gcc" \
-  "$HOME/x-tools/$TARGET/bin/${TARGET}-gcc" \
-  "/home/builder/x-tools/$TARGET/bin/${TARGET}-gcc"
-do
-  if [ -x "$cand" ]; then
-    GCC="$cand"
-    break
-  fi
-done
+PREFIX_DIR="/work/src/x-tools/${TARGET}"
+GCC="${PREFIX_DIR}/bin/${TARGET}-gcc"
 
-if [ -z "$GCC" ]; then
-  GCC=$(find "$CT_PREFIX" "$HOME" /home/builder -type f -name "${TARGET}-gcc" 2>/dev/null | head -n1 || true)
-fi
-
-if [ -z "$GCC" ]; then
-  echo "Could not find ${TARGET}-gcc after ct-ng build" >&2
+if [ ! -x "$GCC" ]; then
+  echo "Could not find ${TARGET}-gcc at expected path: $GCC" >&2
+  find /work/src -maxdepth 4 -type f -name "${TARGET}-gcc" 2>/dev/null || true
   exit 1
 fi
 
-SYSROOT=$("$GCC" -print-sysroot | tr -d '\r')
+SYSROOT="$("$GCC" -print-sysroot | tr -d '\r')"
 if [ -z "$SYSROOT" ] || [ ! -d "$SYSROOT" ]; then
   echo "Compiler reported invalid sysroot: $SYSROOT" >&2
   exit 1
@@ -74,6 +67,7 @@ tar -C "$SYSROOT" -czf "$TARBALL" .
 sha256sum "$TARBALL" | tee /out/vscode-sysroot-x86_64-glibc228.tgz.sha256
 
 echo "TARGET=$TARGET"
+echo "PREFIX_DIR=$PREFIX_DIR"
 echo "GCC=$GCC"
 echo "SYSROOT=$SYSROOT"
 echo "Built: $TARBALL"
