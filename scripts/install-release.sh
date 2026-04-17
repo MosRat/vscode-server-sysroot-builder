@@ -61,7 +61,7 @@ fetch_file() {
   local url="$1" out="$2" label="$3"
   info "Downloading ${label}..."
   if [ "$USE_WGET" -eq 1 ]; then
-    wget --show-progress --progress=bar:force -O "$out" "$url"
+    wget -q --show-progress --progress=bar:force -O "$out" "$url"
   else
     curl -fL --progress-bar "$url" -o "$out"
   fi
