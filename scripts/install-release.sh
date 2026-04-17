@@ -6,6 +6,7 @@ TAG=""
 INSTALL_DIR="/opt/vscode-sysroot"
 KEEP_ARCHIVE=0
 USE_WGET=0
+PATCH_SERVER=0
 
 ARCHIVE="vscode-sysroot-x86_64-glibc228.tgz"
 SUMFILE="${ARCHIVE}.sha256"
@@ -36,6 +37,7 @@ Usage: $0 [options]
   --install-dir PATH        Sysroot install dir, default: /opt/vscode-sysroot
   --keep-archive            Keep downloaded files in temp dir
   --wget                    Prefer wget instead of curl
+  --patch                   Patch existing VS Code Server binaries after install
   -h, --help                Show this help
 USAGE
 }
@@ -47,6 +49,7 @@ while [ $# -gt 0 ]; do
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     --keep-archive) KEEP_ARCHIVE=1; shift ;;
     --wget) USE_WGET=1; shift ;;
+    --patch) PATCH_SERVER=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) error "Unknown argument: $1"; usage; exit 1 ;;
   esac
@@ -261,8 +264,9 @@ RAW_BASE="https://raw.githubusercontent.com/${REPO}/${TAG}"
 fetch_file "${BASE}/${ARCHIVE}" "$TMPDIR/$ARCHIVE" "$ARCHIVE"
 fetch_file "${BASE}/${SUMFILE}" "$TMPDIR/$SUMFILE" "$SUMFILE"
 fetch_file "${RAW_BASE}/scripts/install-remote.sh" "$TMPDIR/install-remote.sh" "install-remote.sh"
+fetch_file "${RAW_BASE}/scripts/patch-vscode-server.sh" "$TMPDIR/patch-vscode-server.sh" "patch-vscode-server.sh"
 
-chmod +x "$TMPDIR/install-remote.sh"
+chmod +x "$TMPDIR/install-remote.sh" "$TMPDIR/patch-vscode-server.sh"
 
 info "Verifying checksum..."
 verify_checksum "$TMPDIR/$ARCHIVE" "$TMPDIR/$SUMFILE"
@@ -270,4 +274,12 @@ success "Checksum verification passed"
 
 info "Installing sysroot to ${INSTALL_DIR}..."
 bash "$TMPDIR/install-remote.sh" "$TMPDIR/$ARCHIVE" "$INSTALL_DIR"
+success "Sysroot installation finished"
+
+if [ "$PATCH_SERVER" -eq 1 ]; then
+  info "Patching existing VS Code Server binaries..."
+  bash "$TMPDIR/patch-vscode-server.sh"
+  success "VS Code Server patch finished"
+fi
+
 success "Installation finished"

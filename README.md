@@ -7,13 +7,18 @@ Build glibc for vscode-server in old systems
 Use the latest release by default:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/MosRat/vscode-server-sysroot-builder/main/scripts/install-release.sh | bash -s -- --patch
+```
+Intall sysroot only:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/MosRat/vscode-server-sysroot-builder/main/scripts/install-release.sh | bash
 ```
 
 Or with `wget`:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/MosRat/vscode-server-sysroot-builder/main/scripts/install-release.sh | bash
+wget -qO- https://raw.githubusercontent.com/MosRat/vscode-server-sysroot-builder/main/scripts/install-release.sh | bash -s -- --patch
 ```
 
 Install to a custom directory:
