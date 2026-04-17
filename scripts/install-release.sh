@@ -6,7 +6,23 @@ TAG=""
 INSTALL_DIR="/opt/vscode-sysroot"
 KEEP_ARCHIVE=0
 USE_WGET=0
-PATCHELF_VERSION="0.18.0"
+
+ARCHIVE="vscode-sysroot-x86_64-glibc228.tgz"
+SUMFILE="${ARCHIVE}.sha256"
+
+color() {
+  local code="$1"; shift
+  if [ -t 1 ]; then
+    printf "\033[%sm%s\033[0m\n" "$code" "$*"
+  else
+    printf "%s\n" "$*"
+  fi
+}
+
+info()    { color "1;34" "[INFO] $*"; }
+success() { color "1;32" "[ OK ] $*"; }
+warn()    { color "1;33" "[WARN] $*"; }
+error()   { color "1;31" "[ERR ] $*"; }
 
 usage() {
   cat <<USAGE
@@ -28,20 +44,11 @@ while [ $# -gt 0 ]; do
     --keep-archive) KEEP_ARCHIVE=1; shift ;;
     --wget) USE_WGET=1; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
+    *) error "Unknown argument: $1"; usage; exit 1 ;;
   esac
 done
 
-fetch() {
-  local url="$1" out="$2"
-  if [ "$USE_WGET" -eq 1 ]; then
-    wget -q -O "$out" "$url"
-  else
-    curl -fsSL "$url" -o "$out"
-  fi
-}
-
-api() {
+fetch_json() {
   local url="$1"
   if [ "$USE_WGET" -eq 1 ]; then
     wget -qO- "$url"
@@ -50,40 +57,57 @@ api() {
   fi
 }
 
+fetch_file() {
+  local url="$1" out="$2" label="$3"
+  info "Downloading ${label}..."
+  if [ "$USE_WGET" -eq 1 ]; then
+    wget --show-progress --progress=bar:force -O "$out" "$url"
+  else
+    curl -fL --progress-bar "$url" -o "$out"
+  fi
+  success "Downloaded ${label}"
+}
+
+info "Resolving release information for ${REPO}..."
+
 if [ -z "$TAG" ]; then
-  TAG=$(api "https://api.github.com/repos/${REPO}/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
+  TAG=$(fetch_json "https://api.github.com/repos/${REPO}/releases/latest" \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
 fi
 
 if [ -z "$TAG" ]; then
-  echo "Could not determine release tag for ${REPO}" >&2
+  error "Could not determine release tag for ${REPO}"
   exit 1
 fi
+
+success "Using release tag: ${TAG}"
 
 TMPDIR=$(mktemp -d)
 cleanup() {
   if [ "$KEEP_ARCHIVE" -eq 0 ]; then
     rm -rf "$TMPDIR"
   else
-    echo "Kept downloaded files in $TMPDIR"
+    warn "Kept downloaded files in $TMPDIR"
   fi
 }
 trap cleanup EXIT
 
-ARCHIVE="vscode-sysroot-x86_64-glibc228.tgz"
-SUMFILE="${ARCHIVE}.sha256"
 BASE="https://github.com/${REPO}/releases/download/${TAG}"
+RAW_BASE="https://raw.githubusercontent.com/${REPO}/${TAG}"
 
-fetch "${BASE}/${ARCHIVE}" "$TMPDIR/$ARCHIVE"
-fetch "${BASE}/${SUMFILE}" "$TMPDIR/$SUMFILE"
+fetch_file "${BASE}/${ARCHIVE}" "$TMPDIR/$ARCHIVE" "$ARCHIVE"
+fetch_file "${BASE}/${SUMFILE}" "$TMPDIR/$SUMFILE" "$SUMFILE"
+fetch_file "${RAW_BASE}/scripts/install-remote.sh" "$TMPDIR/install-remote.sh" "install-remote.sh"
 
+chmod +x "$TMPDIR/install-remote.sh"
+
+info "Verifying checksum..."
 (
   cd "$TMPDIR"
   sha256sum -c "$SUMFILE"
 )
+success "Checksum verification passed"
 
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/${TAG}"
-INSTALLER_URL="${RAW_BASE}/scripts/install-remote.sh"
-fetch "$INSTALLER_URL" "$TMPDIR/install-remote.sh"
-chmod +x "$TMPDIR/install-remote.sh"
-
+info "Installing sysroot to ${INSTALL_DIR}..."
 bash "$TMPDIR/install-remote.sh" "$TMPDIR/$ARCHIVE" "$INSTALL_DIR"
+success "Installation finished"
