@@ -220,6 +220,26 @@ fetch_file() {
   return 1
 }
 
+verify_checksum() {
+  local file="$1" sumfile="$2"
+  local expected actual
+
+  expected="$(awk 'NF {print $1; exit}' "$sumfile" | tr -d '\r')"
+  if [ -z "$expected" ]; then
+    error "Could not parse checksum from $sumfile"
+    exit 1
+  fi
+
+  actual="$(sha256sum "$file" | awk '{print $1}')"
+
+  if [ "$expected" != "$actual" ]; then
+    error "Checksum mismatch for $(basename "$file")"
+    error "Expected: $expected"
+    error "Actual:   $actual"
+    exit 1
+  fi
+}
+
 detect_downloader
 info "Downloader: $DOWNLOADER"
 
@@ -245,10 +265,7 @@ fetch_file "${RAW_BASE}/scripts/install-remote.sh" "$TMPDIR/install-remote.sh" "
 chmod +x "$TMPDIR/install-remote.sh"
 
 info "Verifying checksum..."
-(
-  cd "$TMPDIR"
-  sha256sum -c "$SUMFILE"
-)
+verify_checksum "$TMPDIR/$ARCHIVE" "$TMPDIR/$SUMFILE"
 success "Checksum verification passed"
 
 info "Installing sysroot to ${INSTALL_DIR}..."
