@@ -10,6 +10,10 @@ USE_WGET=0
 ARCHIVE="vscode-sysroot-x86_64-glibc228.tgz"
 SUMFILE="${ARCHIVE}.sha256"
 
+PROXY_PREFIX="https://ghfast.top/"
+CONNECT_TIMEOUT=8
+MAX_TIME=1800
+
 color() {
   local code="$1"; shift
   if [ -t 1 ]; then
@@ -30,7 +34,7 @@ Usage: $0 [options]
   --repo owner/name         GitHub repo, default: MosRat/vscode-server-sysroot-builder
   --tag vX.Y.Z              Release tag, default: latest release
   --install-dir PATH        Sysroot install dir, default: /opt/vscode-sysroot
-  --keep-archive            Keep downloaded release files in temp dir
+  --keep-archive            Keep downloaded files in temp dir
   --wget                    Prefer wget instead of curl
   -h, --help                Show this help
 USAGE
@@ -48,41 +52,180 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-fetch_json() {
-  local url="$1"
+proxy_url() {
+  printf '%s%s\n' "$PROXY_PREFIX" "$1"
+}
+
+have_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+detect_downloader() {
   if [ "$USE_WGET" -eq 1 ]; then
-    wget -qO- "$url"
+    if have_cmd wget; then
+      DOWNLOADER="wget"
+      return
+    fi
+    error "--wget was specified but wget is not installed"
+    exit 1
+  fi
+
+  if have_cmd curl; then
+    DOWNLOADER="curl"
+  elif have_cmd wget; then
+    DOWNLOADER="wget"
   else
-    curl -fsSL "$url"
+    error "Neither curl nor wget is installed"
+    exit 1
+  fi
+}
+
+fetch_json_api() {
+  local url="$1"
+
+  if [ "$DOWNLOADER" = "curl" ]; then
+    curl -fsSL \
+      --connect-timeout "$CONNECT_TIMEOUT" \
+      --max-time 30 \
+      "$url"
+  else
+    wget -qO- \
+      --timeout="$CONNECT_TIMEOUT" \
+      --tries=1 \
+      "$url"
+  fi
+}
+
+get_effective_url() {
+  local url="$1"
+
+  if have_cmd curl; then
+    curl -fsSL \
+      --connect-timeout "$CONNECT_TIMEOUT" \
+      --max-time 60 \
+      -L \
+      -o /dev/null \
+      -w '%{url_effective}' \
+      "$url"
+  else
+    wget --server-response --spider --max-redirect=10 \
+      --timeout="$CONNECT_TIMEOUT" \
+      --tries=1 \
+      "$url" 2>&1 \
+      | awk '/^  Location: /{gsub("\r","",$2); loc=$2} END{print loc}'
+  fi
+}
+
+resolve_tag_from_latest_page() {
+  local latest_url="$1"
+  local effective=""
+
+  effective="$(get_effective_url "$latest_url" || true)"
+  [ -n "$effective" ] || return 1
+
+  printf '%s\n' "$effective" \
+    | sed -n 's#^.*/releases/tag/\([^/?#]*\).*$#\1#p' \
+    | head -n1
+}
+
+resolve_latest_tag() {
+  if [ -n "$TAG" ]; then
+    success "Using specified release tag: $TAG"
+    return
+  fi
+
+  info "Resolving latest release tag from GitHub API..."
+  TAG="$(fetch_json_api "https://api.github.com/repos/${REPO}/releases/latest" \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' \
+    | head -n1 || true)"
+
+  if [ -n "$TAG" ]; then
+    success "Using latest release tag: $TAG"
+    return
+  fi
+
+  warn "GitHub API failed, trying releases/latest redirect..."
+  TAG="$(resolve_tag_from_latest_page "https://github.com/${REPO}/releases/latest" || true)"
+
+  if [ -n "$TAG" ]; then
+    success "Resolved tag via direct releases/latest: $TAG"
+    return
+  fi
+
+  warn "Direct GitHub failed, trying ghfast proxy..."
+  TAG="$(resolve_tag_from_latest_page "$(proxy_url "https://github.com/${REPO}/releases/latest")" || true)"
+
+  if [ -n "$TAG" ]; then
+    success "Resolved tag via ghfast proxy: $TAG"
+    return
+  fi
+
+  error "Could not determine release tag automatically"
+  error "Try again later or specify --tag vX.Y.Z"
+  exit 1
+}
+
+download_with_curl() {
+  local url="$1" out="$2"
+  curl -fL \
+    --connect-timeout "$CONNECT_TIMEOUT" \
+    --max-time "$MAX_TIME" \
+    --progress-bar \
+    "$url" -o "$out"
+}
+
+download_with_wget() {
+  local url="$1" out="$2"
+  wget -q \
+    --show-progress \
+    --progress=bar:force \
+    --timeout="$CONNECT_TIMEOUT" \
+    --tries=1 \
+    -O "$out" "$url"
+}
+
+download_once() {
+  local url="$1" out="$2"
+
+  if [ "$DOWNLOADER" = "curl" ]; then
+    download_with_curl "$url" "$out"
+  else
+    download_with_wget "$url" "$out"
   fi
 }
 
 fetch_file() {
   local url="$1" out="$2" label="$3"
-  info "Downloading ${label}..."
-  if [ "$USE_WGET" -eq 1 ]; then
-    wget -q --show-progress --progress=bar:force -O "$out" "$url"
-  else
-    curl -fL --progress-bar "$url" -o "$out"
+  local proxy
+
+  proxy="$(proxy_url "$url")"
+
+  info "Downloading ${label} from GitHub..."
+  if download_once "$url" "$out"; then
+    printf '\n'
+    success "Downloaded ${label} from GitHub"
+    return 0
   fi
-  success "Downloaded ${label}"
+
+  printf '\n'
+  warn "GitHub download failed for ${label}, retrying via ghfast proxy..."
+  if download_once "$proxy" "$out"; then
+    printf '\n'
+    success "Downloaded ${label} via ghfast proxy"
+    return 0
+  fi
+
+  printf '\n'
+  error "Failed to download ${label} from both GitHub and ghfast proxy"
+  return 1
 }
 
-info "Resolving release information for ${REPO}..."
+detect_downloader
+info "Downloader: $DOWNLOADER"
 
-if [ -z "$TAG" ]; then
-  TAG=$(fetch_json "https://api.github.com/repos/${REPO}/releases/latest" \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
-fi
+resolve_latest_tag
 
-if [ -z "$TAG" ]; then
-  error "Could not determine release tag for ${REPO}"
-  exit 1
-fi
-
-success "Using release tag: ${TAG}"
-
-TMPDIR=$(mktemp -d)
+TMPDIR="$(mktemp -d)"
 cleanup() {
   if [ "$KEEP_ARCHIVE" -eq 0 ]; then
     rm -rf "$TMPDIR"
