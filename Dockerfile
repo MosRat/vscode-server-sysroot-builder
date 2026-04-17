@@ -17,7 +17,7 @@ RUN wget -q "http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-${CTNG_V
     make install && \
     rm -rf /crosstool-ng-* "/crosstool-ng-${CTNG_VERSION}.tar.bz2"
 
-RUN useradd -m -u 1000 -s /bin/bash builder && \
+RUN useradd -m -s /bin/bash builder && \
     mkdir -p /work/src /work/build /work/tarballs /out && \
     chown -R builder:builder /work /out
 
