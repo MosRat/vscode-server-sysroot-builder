@@ -1,0 +1,43 @@
+name: Build VSCode sysroot
+
+on:
+  workflow_dispatch:
+
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        run: docker build -t vscode-server-sysroot-builder .
+
+      - name: Run builder
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD/dist:/out" vscode-server-sysroot-builder
+          ls -lh dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-sysroot-x86_64-glibc228
+          path: |
+            dist/vscode-sysroot-x86_64-glibc228.tgz
+            dist/vscode-sysroot-x86_64-glibc228.tgz.sha256
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/vscode-sysroot-x86_64-glibc228.tgz
+            dist/vscode-sysroot-x86_64-glibc228.tgz.sha256

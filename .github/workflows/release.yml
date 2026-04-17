@@ -1,0 +1,75 @@
+name: Build and Release VSCode sysroot
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional release tag, e.g. v0.1.0'
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        run: docker build -t vscode-server-sysroot-builder .
+
+      - name: Run builder
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD/dist:/out" vscode-server-sysroot-builder
+          ls -lh dist
+
+      - name: Generate tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.inputs.tag || '' }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="v$(date -u +'%Y.%m.%d')-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $TAG"
+
+      - name: Create git tag
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists locally"
+          else
+            git tag "$TAG"
+          fi
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
+            dist/vscode-sysroot-x86_64-glibc228.tgz \
+            dist/vscode-sysroot-x86_64-glibc228.tgz.sha256 \
+            --title "$TAG" \
+            --notes "Automated Docker build for VS Code Server sysroot."
