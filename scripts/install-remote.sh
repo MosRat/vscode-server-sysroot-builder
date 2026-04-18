@@ -9,7 +9,7 @@ fi
 TARBALL="$1"
 INSTALL_DIR="${2:-/opt/vscode-sysroot}"
 PATCHELF_VERSION="0.18.0"
-PATCHELF_URL="https://github.com/NixOS/patchelf/releases/download/${PATCHELF_VERSION}/patchelf-${PATCHELF_VERSION}-x86_64.tar.gz"
+PATCHELF_URL="https://ghfast.top/https://github.com/NixOS/patchelf/releases/download/${PATCHELF_VERSION}/patchelf-${PATCHELF_VERSION}-x86_64.tar.gz"
 
 if [ ! -f "$TARBALL" ]; then
   echo "Tarball not found: $TARBALL" >&2
