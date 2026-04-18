@@ -12,8 +12,8 @@ ARCHIVE="vscode-sysroot-x86_64-glibc228.tgz"
 SUMFILE="${ARCHIVE}.sha256"
 
 PROXY_PREFIX="https://ghfast.top/"
-CONNECT_TIMEOUT=8
-MAX_TIME=1800
+CONNECT_TIMEOUT=5
+MAX_TIME=30
 
 color() {
   local code="$1"; shift
