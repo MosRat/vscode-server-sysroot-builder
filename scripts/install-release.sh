@@ -258,13 +258,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 压缩包依赖 release tag
 BASE="https://github.com/${REPO}/releases/download/${TAG}"
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/${TAG}"
+# 脚本强制依赖 main 分支最新提交
+SCRIPT_BASE="https://raw.githubusercontent.com/${REPO}/main"
 
 fetch_file "${BASE}/${ARCHIVE}" "$TMPDIR/$ARCHIVE" "$ARCHIVE"
 fetch_file "${BASE}/${SUMFILE}" "$TMPDIR/$SUMFILE" "$SUMFILE"
-fetch_file "${RAW_BASE}/scripts/install-remote.sh" "$TMPDIR/install-remote.sh" "install-remote.sh"
-fetch_file "${RAW_BASE}/scripts/patch-vscode-server.sh" "$TMPDIR/patch-vscode-server.sh" "patch-vscode-server.sh"
+
+fetch_file "${SCRIPT_BASE}/scripts/install-remote.sh" "$TMPDIR/install-remote.sh" "install-remote.sh"
+fetch_file "${SCRIPT_BASE}/scripts/patch-vscode-server.sh" "$TMPDIR/patch-vscode-server.sh" "patch-vscode-server.sh"
 
 chmod +x "$TMPDIR/install-remote.sh" "$TMPDIR/patch-vscode-server.sh"
 
